@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Twofold</title>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
 if (!location.hostname.endsWith('.github.io')) {
   document.write('<script src="/socket.io/socket.io.js"><\/script>');
@@ -443,7 +444,7 @@ function buildWorld(){
       if(m===l)P.x=b.x0-r;else if(m===rr)P.x=b.x1+r;else if(m===f)P.z=b.z0-r;else P.z=b.z1+r}}}};
   // ---- multiplayer: server-hosted Socket.IO rooms ----
   let mpOn=false;
-  const MP={role:null,code:'',socket:null,states:{},ls:0,myId:''};
+  const MP={role:null,code:'',peer:null,conns:[],host:null,states:{},ls:0,myId:''};
   const remotes={};
   const mpq=s=>el.querySelector(s);
   const mpPanel=mpq('#setPanel'),mpStat=mpq('#mpStat'),mpCode=mpq('#mpCode'),onSub=mpq('#onSub'),onRow=mpq('#onRow'),mpBody=mpq('#mpBody'),mpIdle=mpq('#mpIdle'),mpIn2=mpq('#mpIn2'),mpInput=mpq('#mpIn');
@@ -479,44 +480,47 @@ function buildWorld(){
   const me=()=>({x:+P.x.toFixed(2),y:+P.y.toFixed(2),z:+P.z.toFixed(2),r:+P.rot.toFixed(2),e:+(W.cz*W.cz*(3-2*W.cz)).toFixed(2),a:+W.air.toFixed(2),n:String(st.n1||'Player').slice(0,14),c:st.c1});
   const mpRefresh=()=>{const inRoom=MP.role==='host'||MP.role==='guest';onSub.textContent=inRoom?('Room '+MP.code+' \u00b7 '+(Object.keys(remotes).length+1)+' players'):(mpOn?'Not in a room':'Off');
     mpIdle.hidden=inRoom;mpIn2.hidden=!inRoom;mpCode.hidden=!(MP.role==='host'&&MP.code)};
-  const mpLeave=()=>{if(MP.socket){MP.socket.removeAllListeners();MP.socket.disconnect()}
-    MP.socket=null;MP.role=null;MP.code='';MP.states={};MP.myId='';for(const id in remotes)dropRemote(id);mpRefresh()};
+  const mpLeave=()=>{if(MP.peer)MP.peer.destroy();
+    MP.peer=null;MP.role=null;MP.code='';MP.conns=[];MP.host=null;MP.states={};MP.myId='';for(const id in remotes)dropRemote(id);mpRefresh()};
   const setOnline=on=>{mpOn=on;onRow.setAttribute('aria-checked',String(on));mpBody.classList.toggle('open',on);
     if(on){onRow.classList.add('pulse');setTimeout(()=>onRow.classList.remove('pulse'),700)}else{mpLeave();mpStat.textContent='Host a room and share its code, or join a room with a code.'}mpRefresh()};
   W.mpLeave=()=>setOnline(false);
   onRow.onclick=()=>setOnline(!mpOn);
-  const connectSocket=()=>{
-    if(typeof io==='undefined'){
-      mpStat.textContent=location.hostname.endsWith('.github.io')
-        ?'Online multiplayer needs a server and is unavailable on free GitHub Pages.'
-        :'Multiplayer could not load. Refresh and try again.';
-      return null
-    }
-    const socket=io({transports:['websocket','polling']});MP.socket=socket;
-    socket.on('connect_error',()=>{mpLeave();mpStat.textContent='Could not reach the multiplayer server. Check your connection and try again.'});
-    socket.on('room-error',d=>{mpLeave();mpStat.textContent=(d&&d.message)||'Could not join that room.'});
-    socket.on('room-created',d=>{MP.code=d.code;MP.role='host';mpCode.textContent=d.code;mpStat.textContent='Room ready. Share this code with your friends.';mpRefresh()});
-    socket.on('room-joined',d=>{MP.code=d.code;MP.role='guest';mpStat.textContent='You joined room '+d.code+'.';(d.players||[]).forEach(p=>{if(p.id!==socket.id)applyState(p.id,p.state)});mpRefresh()});
-    socket.on('player-state',d=>{if(!d||!d.id||d.id===socket.id)return;MP.states[d.id]=d.state;applyState(d.id,d.state);mpRefresh()});
-    socket.on('player-left',d=>{if(d&&d.id){delete MP.states[d.id];dropRemote(d.id);mpRefresh()}});
-    socket.on('room-closed',()=>{mpLeave();mpStat.textContent='The host left the room.'});
-    socket.on('disconnect',()=>{if(MP.role){mpLeave();mpStat.textContent='Disconnected from the multiplayer server.'}});
-    return socket;
-  };
+  const genCode=()=>{const a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let c='';for(let i=0;i<5;i++)c+=a[Math.floor(Math.random()*a.length)];return c};
   const mpHost=()=>{
-    mpLeave();mpStat.textContent='Connecting to multiplayer server...';const socket=connectSocket();if(!socket)return;
-    MP.role='connecting';socket.once('connect',()=>socket.emit('host-room',{state:me()}));mpRefresh();
+    if(typeof Peer==='undefined'){mpStat.textContent='Multiplayer could not load. Check your internet connection and refresh.';return}
+    mpLeave();const code=genCode();MP.code=code;MP.role='host';mpStat.textContent='Creating the room...';mpRefresh();
+    const peer=new Peer('twofold-'+code);MP.peer=peer;
+    peer.on('open',()=>{mpCode.textContent=code;mpStat.textContent='Room ready. Share this code with your friends.';mpRefresh()});
+    peer.on('error',e=>{if(e.type==='unavailable-id'){mpHost();return}mpLeave();mpStat.textContent='Could not create the room ('+e.type+').'});
+    peer.on('connection',conn=>{
+      if(MP.conns.length>=7){conn.on('open',()=>{conn.send({t:'full'});setTimeout(()=>conn.close(),300)});return}
+      conn.on('open',()=>{MP.conns.push(conn);mpRefresh()});
+      conn.on('data',d=>{if(d&&d.t==='s'&&d.s){MP.states[conn.peer]=d.s;applyState(conn.peer,d.s)}});
+      conn.on('close',()=>{MP.conns=MP.conns.filter(c=>c!==conn);delete MP.states[conn.peer];dropRemote(conn.peer);mpRefresh()});
+    });
   };
   const mpJoin=code=>{
     code=String(code||'').trim().toUpperCase();
     if(code.length<3){mpStat.textContent='Type the room code first.';return}
-    mpLeave();MP.code=code;MP.role='connecting';mpStat.textContent='Joining room '+code+'...';const socket=connectSocket();if(!socket)return;
-    socket.once('connect',()=>socket.emit('join-room',{code,state:me()}));mpRefresh();
+    if(typeof Peer==='undefined'){mpStat.textContent='Multiplayer could not load. Check your internet connection and refresh.';return}
+    mpLeave();MP.code=code;MP.role='guest';mpStat.textContent='Joining room '+code+'...';mpRefresh();
+    const peer=new Peer();MP.peer=peer;
+    peer.on('open',id=>{MP.myId=id;const conn=peer.connect('twofold-'+code);MP.host=conn;
+      const timeout=setTimeout(()=>{if(!conn.open){mpLeave();mpStat.textContent='Room not found. Check the code and try again.'}},10000);
+      conn.on('open',()=>{clearTimeout(timeout);mpStat.textContent='You joined room '+code+'.';mpRefresh()});
+      conn.on('data',d=>{if(!d)return;
+        if(d.t==='w'){const seen={};d.l.forEach(o=>{if(o.id===MP.myId)return;seen[o.id]=1;applyState(o.id,o)});for(const id in remotes)if(!seen[id])dropRemote(id);mpRefresh()}
+        else if(d.t==='full'){mpLeave();mpStat.textContent='That room is full.'}});
+      conn.on('close',()=>{if(MP.role){mpLeave();mpStat.textContent='The host left the room.'}})});
+    peer.on('error',e=>{mpLeave();mpStat.textContent=e.type==='peer-unavailable'?'Room not found. Check the code and try again.':'Could not join ('+e.type+').'});
   };
   const mpTick=dt=>{
     remotesUpdate(dt);
-    if((MP.role!=='host'&&MP.role!=='guest')||!MP.socket||!MP.socket.connected)return;
-    const now=performance.now();if(now-MP.ls<90)return;MP.ls=now;MP.socket.emit('player-state',me());
+    if(!MP.role)return;const now=performance.now();if(now-MP.ls<90)return;MP.ls=now;
+    if(MP.role==='host'){const players=[{id:'host',...me()}];for(const id in MP.states)players.push({id,...MP.states[id]});
+      MP.conns.forEach(conn=>{if(conn.open)conn.send({t:'w',l:players})})}
+    else if(MP.host&&MP.host.open)MP.host.send({t:'s',s:me()});
   };
   const mpOpen=()=>{W.paused=true;W.jx=W.jy=0;W.jump=false;W.keys={};if(document.pointerLockElement)document.exitPointerLock();mpRefresh();mpPanel.hidden=false};
   const mpClose=()=>{mpPanel.hidden=true;W.paused=false};
