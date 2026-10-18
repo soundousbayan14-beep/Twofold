@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Twofold</title>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="/socket.io/socket.io.js"></script>
+<script>
+if (!location.hostname.endsWith('.github.io')) {
+  document.write('<script src="/socket.io/socket.io.js"><\/script>');
+}
+</script>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600&family=Instrument+Sans:wght@400;500;600&display=swap">
 <style>
 :root{--bg:#f2f1fa;--s1:#fff;--s2:#e8e7f6;--tx:#1b1936;--mu:#6a678c;--ln:rgba(27,25,54,.09);--sh:rgba(80,70,180,.16);--p1:#6b7bff;--p2:#ff9f43;--on1:#fff;--on2:#2a1500;padding-top:env(safe-area-inset-top,0px)}
@@ -482,7 +486,12 @@ function buildWorld(){
   W.mpLeave=()=>setOnline(false);
   onRow.onclick=()=>setOnline(!mpOn);
   const connectSocket=()=>{
-    if(typeof io==='undefined'){mpStat.textContent='Multiplayer could not load. Refresh and try again.';return null}
+    if(typeof io==='undefined'){
+      mpStat.textContent=location.hostname.endsWith('.github.io')
+        ?'Online multiplayer needs a server and is unavailable on free GitHub Pages.'
+        :'Multiplayer could not load. Refresh and try again.';
+      return null
+    }
     const socket=io({transports:['websocket','polling']});MP.socket=socket;
     socket.on('connect_error',()=>{mpLeave();mpStat.textContent='Could not reach the multiplayer server. Check your connection and try again.'});
     socket.on('room-error',d=>{mpLeave();mpStat.textContent=(d&&d.message)||'Could not join that room.'});
