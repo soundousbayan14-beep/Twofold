@@ -10,6 +10,7 @@ const rooms = new Map();
 const makeCode = () => { const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let code; do { code=Array.from({length:5},()=>chars[crypto.randomInt(chars.length)]).join(''); } while(rooms.has(code)); return code; };
 app.get('/health', (_req,res)=>res.json({ok:true,rooms:rooms.size}));
 app.get('/', (_req,res)=>res.sendFile(path.join(__dirname,'index.html')));
+app.get('/blocky-character.gltf', (_req,res)=>res.sendFile(path.join(__dirname,'blocky-character.gltf')));
 io.on('connection', socket => {
   socket.on('host-room', payload => {
     if (socket.data.room) return;

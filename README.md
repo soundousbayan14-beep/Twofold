@@ -24,6 +24,12 @@ Open `http://localhost:3000`.
 
 ## GitHub Pages deployment
 
-The `Deploy GitHub Pages` workflow publishes `index.html` whenever changes are
-pushed to the `main` branch. The repository's Pages source must be set to
-**GitHub Actions**. The first deployment may take a few minutes.
+The `Deploy GitHub Pages` workflow publishes `index.html` and its 3D character
+model whenever changes are pushed to the `main` branch. The repository's Pages
+source must be set to **GitHub Actions**. The first deployment may take a few
+minutes.
+
+The character is based on
+[Blocky Character Template (rigged)](https://sketchfab.com/3d-models/blocky-character-template-rigged-3654b1f3376e49f9ae2dd4bbd8697091)
+by [TRexIndominus12](https://sketchfab.com/TRexIndominus12), licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).

@@ -29,6 +29,7 @@ jobs:
         run: |
           mkdir site
           cp index.html site/index.html
+          cp blocky-character.gltf site/blocky-character.gltf
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
